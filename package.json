@@ -1,0 +1,29 @@
+{
+  "name": "stream-pg",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "watch": "tsc-watch --onSuccess \"node --inspect build/index.js\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^16.11.12",
+    "@types/pg": "^8.6.1",
+    "@types/pg-copy-streams": "^1.2.1",
+    "@types/sax": "^1.2.3",
+    "ts-node": "^10.4.0",
+    "tsc-watch": "^4.5.0",
+    "typescript": "^4.5.3"
+  },
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "pg": "^8.7.1",
+    "pg-copy-streams": "^6.0.2",
+    "sax": "^1.2.4",
+    "xml-stream": "^0.4.5"
+  }
+}

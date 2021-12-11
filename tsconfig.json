@@ -1,0 +1,28 @@
+{
+    "include": [
+        "src/**/*.ts"
+    ],
+    "compilerOptions": {
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "target": "es2017",
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "outDir": "build",
+        "rootDir": "src",
+        "sourceMap": true,
+        "baseUrl": ".",
+        "allowJs": true,
+        "declaration": false,
+        "moduleResolution": "node",
+        "typeRoots": [
+            "node_modules/@types"
+        ],
+        "paths": {
+            "*": [
+                "node_modules/@types/*",
+                "./src/types/*"
+            ]
+        }
+    }
+}
