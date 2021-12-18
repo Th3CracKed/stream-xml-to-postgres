@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryArrayConfig } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { CONFIG } from './config';
 const pool = new Pool({
     host: CONFIG.db.host,
@@ -12,69 +12,105 @@ import { from as copyFrom } from 'pg-copy-streams';
 
 import { createStream } from 'sax';
 
-async function main() {
+async function streamData({ table, fields }: { table: string, fields: string[] }) {
     const startTime = process.hrtime();
     pool.connect((err: Error, client: PoolClient, release: (release?: any) => void) => {
-        const table = 'users';
-        const dbStream = client.query(copyFrom(`COPY ${table} (id,reputation,creationdate,displayname,lastaccessdate,websiteurl,location,accountid,aboutme,views,upvotes,downvotes) FROM STDIN WITH DELIMITER ',' NULL AS ''`))
+        const fieldsStringified = fields.reduce((acc, field, curentIndex) => acc + field.toLowerCase() + (curentIndex !== fields.length - 1 ? ',' : ''), '');
+        const query = `COPY ${table} (${fieldsStringified}) FROM STDIN WITH DELIMITER ',' NULL AS ''`;
+        // fs.writeFile(`query.txt`, `${query}`, (err) => {
+        //     if (err) throw err;
+        // });
+        const dbStream = client.query(copyFrom(query))
             .on('error', error => {
                 console.log('error', error);
                 release();
-                errors.push(`saxStream error | ${{ nbOfProcessedRows }} | ${JSON.stringify({ error })}`);
+                fs.appendFile(`stream_error_${table}.json`, `saxStream error | nbOfProcessedRows = ${nbOfProcessedRows} | ${JSON.stringify({ error })}`, (err) => {
+                    if (err) throw err;
+                });
             })
             .on('finish', () => {
                 console.log('finished');
                 release();
                 const endTime = process.hrtime(startTime);
                 console.log('Data transfer to database is done!');
-                console.log('Execution time: %ds %dms', endTime[0], endTime[1] / 1000000)
-                if (errors.length) {
-                    fs.writeFileSync(`errors_${table}.json`, JSON.stringify(errors));
-                }
+                console.log('Execution time: %ds %dms', endTime[0], endTime[1] / 1000000);
             });
 
         const saxStream = createStream(true, {});
-        const errors: string[] = [];
+        let nbErrors: number = 0;
         let nbOfProcessedRows = 0;
+        const readStream = fs.createReadStream(`data/${table}.xml`);
         saxStream.on('end', () => dbStream.end());
         saxStream.on("error", (error: Error) => console.log(error));
+        dbStream.on("drain", () => {
+            // console.log('drained');
+            readStream.resume();
+        })
         saxStream.on("opentag", async function (node) {
             nbOfProcessedRows++;
             if (node.name !== 'row') {
                 return;
             }
-            if (nbOfProcessedRows % 50 === 0) {
-                console.log(`Processing the ${nbOfProcessedRows} row, nb of errors ${errors.length}/${nbOfProcessedRows}`);
+            if (nbOfProcessedRows % 10000 === 0) {
+                console.log(`Processing the ${nbOfProcessedRows} row, nb of nbErrors ${nbErrors}/${nbOfProcessedRows}`);
             }
             if (!node.attributes) {
-                errors.push(`${{ nbOfProcessedRows }} | Attributes undefined | ${JSON.stringify({ node })}`);
+                nbErrors++;
+                fs.appendFile(`errors_${table}.json`, `${{ nbOfProcessedRows }} | Attributes undefined | ${JSON.stringify({ node })}`, (err) => {
+                    if (err) throw err;
+                });
                 return;
             }
-            const { Id, Reputation, CreationDate, DisplayName, LastAccessDate, WebsiteUrl, Location, AboutMe, Views, UpVotes, DownVotes, AccountId } = node.attributes;
-            if (isNaN(parseInt(<string>Id, 10)) || isNaN(parseInt(<string>Reputation, 10))) {
-                errors.push(`${{ nbOfProcessedRows }} | Id or Reputation undefined | Id = ${Id} | Reputation = ${Reputation}`);
-                return;
-            }
+            const regexDelimiter = new RegExp(',', 'g');
+
+            const row = fields.reduce((acc, field, currentIndex) => {
+                const isLastField = currentIndex === fields.length - 1;
+                const delimiter = isLastField ? '' : ',';
+                const attributeValue = node.attributes[field];
+                // if(!attributeValue && isLastField){
+                //     return acc + ' '+ delimiter;
+                // }else 
+                if (!attributeValue) {
+                    return acc + delimiter;
+                }
+                return acc + encodeURI((<string>attributeValue).replace(regexDelimiter, ' ')) + delimiter;
+            }, '');
             // console.log("saxStream", node);
             try {
-                // console.log({ Id, Reputation, CreationDate, DisplayName, LastAccessDate, WebsiteUrl, Location, AboutMe, Views, UpVotes, DownVotes, AccountId });
-                const inserted = dbStream.write(`${Id},${Reputation},${CreationDate},${escape(<string>DisplayName)},${LastAccessDate},${escape(<string>WebsiteUrl)},${escape(<string>Location)},${AccountId},${escape(<string>AboutMe)},${Views},${UpVotes},${DownVotes}\n`)
+                // readStream.pause();
+                // fs.appendFile(`written_row_${table}.txt`, `${row}\n----------------------------\n`, (err) => {
+                //     if (err) throw err;
+                // });
+                const inserted = dbStream.write(`${row}\n`);
                 if (!inserted) {
-                    console.log(`user inserted ${inserted}`, { Id, Reputation, CreationDate, DisplayName, LastAccessDate, WebsiteUrl, Location, AboutMe, Views, UpVotes, DownVotes, AccountId });
-                    errors.push(`${{ nbOfProcessedRows }} | Failed to insert user ${JSON.stringify({ err })} ${JSON.stringify({ node })}`);
+                    readStream.pause();
+                    // console.log(`saxStream paused id = ${Id}`);
+                    // console.log(`user inserted ${inserted}`, { Id, UserId, Name, Date, Class, TagBased });
+                } else {
+                    readStream.resume();
                 }
             } catch (err) {
-                console.log('user insertion error', JSON.stringify({ err }));
-                errors.push(`${{ nbOfProcessedRows }} | Error while inserting user ${JSON.stringify({ err })} ${JSON.stringify({ node })}`);
+                fs.appendFile(`errors_${table}.json`, `${{ nbOfProcessedRows }} | Error while inserting user ${JSON.stringify({ err })} ${JSON.stringify({ node })}`, (err) => {
+                    if (err) throw err;
+                });
+                nbErrors++;
+                // console.log('user insertion error', JSON.stringify({ err }));   
             }
         });
         console.log(`Parsing ${table}.xml as a steam`);
-        fs.createReadStream(`data/${table}.xml`).pipe(saxStream, { end: true });
+        readStream.pipe(saxStream, { end: true });
     });
 }
 
+streamData({ table: 'Comments', fields: ['Id', 'PostId', 'Score', 'Text', 'CreationDate', 'UserId', 'ContentLicense', 'UserDisplayName'] })
+    .catch((e) => {
+        throw e
+    })
+    .finally(async () => {
+        // disconnect pg
+    })
 
-main()
+streamData({ table: 'Votes', fields: ['Id', 'PostId', 'VoteTypeId', 'CreationDate'] })
     .catch((e) => {
         throw e
     })
