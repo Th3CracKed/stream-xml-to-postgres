@@ -12,11 +12,11 @@ import { from as copyFrom } from 'pg-copy-streams';
 
 import { createStream } from 'sax';
 
-async function streamData({ table, fields }: { table: string, fields: { value: string, mandatory?: true, bool?: true }[] }) {
+async function streamData({ table, fields }: { table: string, fields: { value: string, mandatory?: true, bool?: true, defaultValue?: number | string }[] }) {
     const startTime = process.hrtime();
     pool.connect((err: Error, client: PoolClient, release: (release?: any) => void) => {
         const fieldsStringified = fields.reduce((acc, field, currentIndex) => acc + field.value.toLowerCase() + (currentIndex !== fields.length - 1 ? ',' : ''), '');
-        const query = `COPY ${table} (${fieldsStringified}) FROM STDIN WITH DELIMITER ',' NULL AS ''`;
+        const query = `COPY ${table} (${fieldsStringified}) FROM STDIN NULL AS ''`;
         // fs.writeFile(`query.txt`, `${query}`, (err) => {
         //     if (err) throw err;
         // });
@@ -67,14 +67,14 @@ async function streamData({ table, fields }: { table: string, fields: { value: s
             let ignoreRow = false;
             const row = fields.reduce((acc, field, currentIndex) => {
                 const isLastField = currentIndex === fields.length - 1;
-                const delimiter = isLastField ? '' : ',';
+                const delimiter = isLastField ? '' : '\t';
                 if (field.bool) {
                     const attributeValue = attributes[field.value] === 'False' ? 0 : 1;
                     if (!attributeValue && field.mandatory) {
                         ignoreRow = true;
                     }
                     if (!attributeValue) {
-                        return acc + delimiter;
+                        return acc + field.defaultValue + delimiter;
                     }
                     return acc + attributeValue + delimiter;
                 } else {
@@ -86,13 +86,12 @@ async function streamData({ table, fields }: { table: string, fields: { value: s
                         ignoreRow = true;
                     }
                     if (!attributeValue) {
-                        return acc + delimiter;
+                        return acc + field.defaultValue + delimiter;
                     }
-                    return acc + encodeURI((<string>attributeValue).replace(regexDelimiter, ' ')) + delimiter;
+                    return acc + encodeURI(attributeValue) + delimiter;
                 }
 
             }, '');
-            // console.log({ row });
             if (ignoreRow) {
                 fs.appendFile(`errors_${table}.json`, `${{ nbOfProcessedRows }} | Attributes undefined `, (err) => {
                     if (err) throw err;
@@ -158,23 +157,11 @@ async function streamData({ table, fields }: { table: string, fields: { value: s
     //         // disconnect pg
     //     })
     // streamData({
-    //     table: 'Users', fields: [{ value: 'Id', mandatory: true }, { value: 'Reputation' }, { value: 'CreationDate' }, { value: 'DisplayName' }, { value: 'Views' }, { value: 'WebsiteUrl' },
-    //     { value: 'Location' }, { value: 'AboutMe' }, { value: 'Age' }, { value: 'UpVotes' }, { value: 'DownVotes' }, { value: 'EmailHash' }, { value: 'AccountId' }, { value: 'ProfileImageUrl' }
-    //     ]
-    // })
-    //     .catch((e) => {
-    //         fs.appendFile(`Users_logs.txt`, `${JSON.stringify({ err: e })}`, (err) => {
-    //             if (err) throw err;
-    //         });
-    //     })
-    //     .finally(async () => {
-    //         // disconnect pg
-    //     })
-    // streamData({
-    //     table: 'Posts', fields: [{ value: 'Id', mandatory: true }, { value: 'PostTypeId' }, { value: 'AcceptedAnswerId' }, { value: 'ParentId' }, { value: 'Score' }, { value: 'ViewCount' },
-    //     { value: 'Body' }, { value: 'OwnerUserId' }, { value: 'LastEditorUserId' }, { value: 'LastEditDate' }, { value: 'LastActivityDate' }, { value: 'Title' }, { value: 'Tags' }, { value: 'AnswerCount' },
-    //     { value: 'CommentCount' }, { value: 'FavoriteCount' }, { value: 'CreationDate' }, { value: 'CommunityOwnedDate' },
-    //     { value: 'ContentLicense' }, { value: 'LastEditorDisplayName' }, { value: 'OwnerDisplayName' }
+    //     table: 'Users',
+    //     fields: [
+    //         { value: 'Id', mandatory: true }, { value: 'Reputation', defaultValue: 0 }, { value: 'CreationDate' }, { value: 'DisplayName', defaultValue: '' }, { value: 'Views', defaultValue: 0 }, { value: 'WebsiteUrl', defaultValue: '' },
+    //         { value: 'Location', defaultValue: '' },
+    //         { value: 'AboutMe', defaultValue: '' }, { value: 'Age', defaultValue: 0 }, { value: 'UpVotes', defaultValue: 0 }, { value: 'DownVotes', defaultValue: 0 }, { value: 'EmailHash', defaultValue: '' }, { value: 'AccountId', defaultValue: '' }, { value: 'ProfileImageUrl', defaultValue: '' }
     //     ]
     // })
     //     .catch((e) => {
@@ -186,7 +173,11 @@ async function streamData({ table, fields }: { table: string, fields: { value: s
     //         // disconnect pg
     //     })
     streamData({
-        table: 'Votes', fields: [{ value: 'Id', mandatory: true }, { value: 'PostId' }, { value: 'VoteTypeId' }, { value: 'CreationDate' }]
+        table: 'Posts', fields: [{ value: 'Id', mandatory: true }, { value: 'PostTypeId', defaultValue: 0 }, { value: 'AcceptedAnswerId', defaultValue: 0 }, { value: 'ParentId', defaultValue: 0 }, { value: 'Score', defaultValue: 0 }, { value: 'ViewCount', defaultValue: 0 },
+        { value: 'Body', defaultValue: '' }, { value: 'OwnerUserId', defaultValue: 0 }, { value: 'LastEditorUserId', defaultValue: 0 }, { value: 'LastEditDate', defaultValue: '' }, { value: 'LastActivityDate', defaultValue: '' }, { value: 'Title', defaultValue: '' }, { value: 'Tags', defaultValue: '' }, { value: 'AnswerCount', defaultValue: 0 },
+        { value: 'CommentCount', defaultValue: 0 }, { value: 'FavoriteCount', defaultValue: 0 }, { value: 'CreationDate', defaultValue: '' }, { value: 'CommunityOwnedDate', defaultValue: '' },
+        { value: 'ContentLicense', defaultValue: '' }, { value: 'LastEditorDisplayName', defaultValue: '' }, { value: 'OwnerDisplayName', defaultValue: '' }
+        ]
     })
         .catch((e) => {
             fs.appendFile(`Users_logs.txt`, `${JSON.stringify({ err: e })}`, (err) => {
@@ -196,6 +187,17 @@ async function streamData({ table, fields }: { table: string, fields: { value: s
         .finally(async () => {
             // disconnect pg
         })
+    // streamData({
+    //     table: 'Votes', fields: [{ value: 'Id', mandatory: true }, { value: 'PostId' }, { value: 'VoteTypeId' }, { value: 'CreationDate' }]
+    // })
+    //     .catch((e) => {
+    //         fs.appendFile(`Users_logs.txt`, `${JSON.stringify({ err: e })}`, (err) => {
+    //             if (err) throw err;
+    //         });
+    //     })
+    //     .finally(async () => {
+    //         // disconnect pg
+    //     })
 }())
 
 // streamData({ table: 'Votes', fields: ['Id', 'PostId', 'VoteTypeId', 'CreationDate'] })

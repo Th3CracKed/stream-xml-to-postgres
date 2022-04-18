@@ -1,0 +1,67 @@
+# number of answers with code  by question tagged as node.js
+select B.id as parentId, count(*) from posts A, posts B WHERE A.parentId=B.id and B.tags like '%3Cnode.js%3E' and A.body like '%3Ccode%3E%' GROUP BY B.id limit 10 
+# ids of questions that are tagged as node.js with answers that contains code 
+select qPosts.id as postId from posts aPosts, posts qPosts WHERE aPosts.parentId=qPosts.id and qPosts.tags like '%3Cnode.js%3E' and aPosts.body like '%3Ccode%3E%' limit 10 
+
+# ids of answers that contains code and there question are tagged as node.js
+select aPosts.id as postId from posts aPosts, posts qPosts WHERE aPosts.parentId=qPosts.id and qPosts.tags like '%3Cnode.js%3E' and aPosts.body like '%3Ccode%3E%' limit 10 
+
+# insert postId, titleId that are tagged as node.js with answers that contains code into another table
+insert into page select qPosts.id as postid, qPosts.title as titleid from posts aPosts, posts qPosts WHERE aPosts.parentId=qPosts.id and qPosts.tags like '%3Cnode.js%3E' and aPosts.body like '%3Ccode%3E%' GROUP BY qPosts.id 
+
+# replace and lowercase titles
+update page
+  set titleid = replace(replace(lower(titleid), '%20', '-'), '?', '');
+
+
+
+# or use directly to insert in correct format
+insert into page select qPosts.id as postid, replace(replace(lower(qPosts.title), '%20', '-'), '?', '') as titleid from posts aPosts, posts qPosts WHERE aPosts.parentId=qPosts.id and qPosts.tags like '%3Cnode.js%3E' and aPosts.body like '%3Ccode%3E%' GROUP BY qPosts.id 
+
+
+# ids of questions that are tagged as node.js with answers that contains code 
+select id as postid, title as titleid from posts where exists(select 1 from posts where body like '%3Ccode%3E%') and tags like '%3Cnode.js%3E'
+# insert postId, titleId that are tagged as node.js with answers that contains code into another table
+insert into page(postid, titleid, tags) select id as postid, replace(replace(lower(title), '%20', '-'), '?', '') as titleid, tags from posts where exists(select 1 from posts where body like '%3Ccode%3E%') and tags like '%3Cnode.js%3E'
+
+
+insert into page(id, titleid, tags) select id, replace(replace(lower(title), '%20', '-'), '?', '') as titleid, tags from posts where exists(select 1 from posts where body like '%3Ccode%3E%') and tags like '%3Cnode.js%3E'
+
+
+insert into page(postid, titleid, tags) select id, title, tags from posts where exists(select 1 from posts where body like '%3Ccode%3E%') and tags like '%3Cnode.js%3E'
+
+
+create table codes (
+	id SERIAL NOT NULL PRIMARY KEY,
+    body varchar,
+    postid INT,
+	running boolean,
+	is_stackoverflow boolean,
+	number_of_execution integer DEFAULT 0,
+   	CONSTRAINT fk_post
+  	FOREIGN KEY(postid) 
+  	REFERENCES posts(id)
+)
+
+make pages id as stackoverflow id
+
+insert into pages(postid, title, tags) select id, title, tags from posts as p where tags like '%3Cnode.js%3E' and exists(select 1 from posts where body like '%3Ccode%3E%' and parentid=p.id)
+insert into codes(body, is_stackoverflow, postid) select body, TRUE, id from posts as p where body like '%3Ccode%3E%' and exists(select 1 from posts where id=p.parentid and tags like '%3Cnode.js%3E')
+
+
+insert into codes(body, is_stackoverflow, postid, parentid) select body, TRUE, id, parentid from posts as p where body like '%3Ccode%3E%' and exists(select 1 from posts where id=p.parentid and tags like '%3Cnode.js%3E')
+
+
+select p.title, c.body from pages p, codes c where tags like '%3Cnode.js%3E' and p.postid=c.parentid
+
+
+ALTER TABLE codes 
+ADD CONSTRAINT fk_parent_postid 
+FOREIGN KEY (parentid) 
+REFERENCES pages (postid);
+
+CREATE UNIQUE INDEX CONCURRENTLY postid_idx ON pages(postid);
+
+ALTER TABLE pages 
+ADD CONSTRAINT unique_postid 
+UNIQUE USING INDEX postid_idx;

@@ -7,3 +7,6 @@
 - npm i 
 
 - npm run watch to start the project in watch mode
+
+https://github.com/brianc/node-pg-copy-streams
+https://github.com/datalanche/node-pg-format
